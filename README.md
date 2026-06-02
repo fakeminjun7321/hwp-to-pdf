@@ -2,7 +2,7 @@
 
 **브라우저에서 바로 한글(HWP/HWPX) 문서를 PDF로.** 파일이 서버로 전송되지 않고 100% 내 컴퓨터(브라우저) 안에서만 처리됩니다. 정적 사이트라 GitHub Pages 링크 하나로 어디서든 사용할 수 있어요.
 
-> 🔗 데모: `https://<your-id>.github.io/hwp-to-pdf/` (아래 *배포* 참고)
+> 🔗 **데모: https://fakeminjun7321.github.io/hwp-to-pdf/**
 
 ---
 
