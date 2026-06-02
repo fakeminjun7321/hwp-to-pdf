@@ -3,7 +3,7 @@
 
 'use strict';
 
-const VERSION = 'v2';
+const VERSION = 'v3';
 const CACHE = 'hwp2pdf-' + VERSION;          // precached app shell
 const RUNTIME = 'hwp2pdf-runtime-' + VERSION; // runtime cache for CDN/font assets
 
@@ -82,7 +82,8 @@ async function handleSameOrigin(request) {
   const cache = await caches.open(CACHE);
   try {
     const response = await fetch(request);
-    if (response && (response.ok || response.type === 'opaque')) {
+    // 같은 오리진은 정상(200대) 응답만 캐시 — opaque/오류 응답이 오프라인 폴백을 오염시키지 않도록
+    if (response && response.ok) {
       cache.put(request, response.clone());
     }
     return response;

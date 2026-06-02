@@ -45,7 +45,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import uuid
 from pathlib import Path
 
 # ----------------------------------------------------------------------
@@ -95,7 +94,8 @@ def h2orestart_installed(unopkg):
     try:
         out = subprocess.run([unopkg, "list"], capture_output=True, text=True, timeout=60)
         blob = ((out.stdout or "") + (out.stderr or "")).lower()
-        return ("h2orestart" in blob) or ("hwp" in blob and "ebandal" in blob)
+        # 안정적인 토큰만 사용 ('hwp' 단독 매칭은 오탐이 잦아 제거)
+        return ("h2orestart" in blob) or ("ebandal" in blob)
     except Exception:
         return False
 
@@ -105,12 +105,15 @@ def install_h2orestart(unopkg):
     if not unopkg:
         print("❌ unopkg 를 찾지 못했습니다. LibreOffice 가 설치되어 있나요?")
         return 1
+    print("ℹ️  이 명령은 GitHub(ebandal/H2Orestart)에서 LibreOffice 확장(제3자 코드)을 받아 설치합니다.")
+    import json
+    import urllib.request
+    UA = {"User-Agent": "hwp2pdf-cli", "Accept": "application/vnd.github+json"}
+    tmpdir = Path(tempfile.mkdtemp(prefix="h2o_"))   # 비공개(0700) 임시 폴더 — /tmp 고정경로 레이스 방지
     try:
-        import json
-        import urllib.request
         api = "https://api.github.com/repos/ebandal/H2Orestart/releases/latest"
         print("· 최신 릴리스 조회 중…")
-        with urllib.request.urlopen(api, timeout=30) as r:
+        with urllib.request.urlopen(urllib.request.Request(api, headers=UA), timeout=30) as r:
             data = json.load(r)
         url = None
         for a in data.get("assets", []):
@@ -120,9 +123,13 @@ def install_h2orestart(unopkg):
         if not url:
             print("❌ 릴리스에서 .oxt 자산을 찾지 못했습니다. 수동 설치를 이용하세요.")
             return 1
-        tmp = Path(tempfile.gettempdir()) / "H2Orestart.oxt"
+        tmp = tmpdir / "H2Orestart.oxt"
         print(f"· 다운로드: {url}")
-        urllib.request.urlretrieve(url, tmp)
+        with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=120) as resp, open(tmp, "wb") as fo:
+            shutil.copyfileobj(resp, fo)
+        if tmp.stat().st_size < 1000:
+            print("❌ 다운로드 결과가 비정상적으로 작습니다. 수동 설치를 이용하세요.")
+            return 1
         print("· 설치(unopkg add)…")
         res = subprocess.run([unopkg, "add", "-f", str(tmp)], capture_output=True, text=True, timeout=180)
         if res.returncode == 0:
@@ -133,37 +140,58 @@ def install_h2orestart(unopkg):
     except Exception as e:
         print(f"❌ 자동 설치 실패: {e}\n   수동: https://github.com/ebandal/H2Orestart/releases")
         return 1
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 # ----------------------------------------------------------------------
 # 변환
 # ----------------------------------------------------------------------
-def convert(soffice, src: Path, out_dir: Path, timeout=240, retries=1) -> Path:
-    """LibreOffice(+H2Orestart) 로 .hwp/.hwpx → PDF. 격리 프로필 사용."""
+def _unique_out(out_dir: Path, src: Path, used: set) -> Path:
+    """충돌 없는 최종 PDF 경로. report.hwp + report.hwpx 가 서로 덮어쓰지 않도록."""
+    cand = out_dir / (src.stem + ".pdf")
+    if cand not in used and not cand.exists():
+        return cand
+    ext = src.suffix.lstrip(".").lower() or "doc"
+    cand = out_dir / f"{src.stem}__{ext}.pdf"
+    n = 2
+    while cand in used or cand.exists():
+        cand = out_dir / f"{src.stem}__{ext}_{n}.pdf"
+        n += 1
+    return cand
+
+
+def convert(soffice, src: Path, out_dir: Path, timeout=240, retries=1, used=None) -> Path:
+    """LibreOffice(+H2Orestart) 로 .hwp/.hwpx → PDF. 격리 프로필 + 임시 출력폴더 사용."""
     out_dir.mkdir(parents=True, exist_ok=True)
-    final_pdf = out_dir / (src.stem + ".pdf")
+    if used is None:
+        used = set()
+    final_pdf = _unique_out(out_dir, src, used)
     last_err = ""
     for attempt in range(retries + 1):
-        profile = Path(tempfile.gettempdir()) / f"lo_profile_{uuid.uuid4().hex[:8]}"
-        # macOS/Linux file URI
-        prof_uri = profile.as_uri()
+        # 변환마다 격리된 프로필 + 격리된 임시 출력폴더 → 잠금/동시성/이전 산출물 혼입 방지
+        profile = Path(tempfile.mkdtemp(prefix="lo_profile_"))
+        workdir = Path(tempfile.mkdtemp(prefix="lo_out_"))
         cmd = [
             soffice, "--headless", "--norestore", "--nolockcheck", "--nodefault",
-            f"-env:UserInstallation={prof_uri}",
+            f"-env:UserInstallation={profile.as_uri()}",
             "--convert-to", "pdf:writer_pdf_Export",
-            "--outdir", str(out_dir), str(src),
+            "--outdir", str(workdir), str(src),
         ]
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-            # soffice 는 출력 파일명을 stem.pdf 로 만든다
-            produced = out_dir / (src.stem + ".pdf")
+            produced = workdir / (src.stem + ".pdf")   # soffice 는 stem.pdf 로 출력
             if produced.exists() and produced.stat().st_size > 0:
-                return produced
-            last_err = (r.stderr or r.stdout or "출력 파일이 생성되지 않음").strip()
+                shutil.move(str(produced), str(final_pdf))
+                used.add(final_pdf)
+                return final_pdf
+            rc = "" if r.returncode == 0 else f"(코드 {r.returncode}) "
+            last_err = rc + (r.stderr or r.stdout or "출력 파일이 생성되지 않음").strip()
         except subprocess.TimeoutExpired:
             last_err = f"시간 초과({timeout}s)"
         finally:
             shutil.rmtree(profile, ignore_errors=True)
+            shutil.rmtree(workdir, ignore_errors=True)
     raise RuntimeError(last_err or "변환 실패")
 
 
@@ -257,12 +285,16 @@ def main():
         print("❌ 변환할 HWP/HWPX 파일을 찾지 못했습니다.")
         sys.exit(1)
 
+    timeout = args.timeout if args.timeout and args.timeout > 0 else 240
+    retries = args.retries if args.retries and args.retries > 0 else 0
+
     print(f"📄 변환 대상 {len(targets)}개 | 엔진: LibreOffice + H2Orestart\n")
     ok = fail = 0
+    written = set()   # 배치 전체에서 출력 파일명 충돌 추적
     for src in targets:
         out_dir = Path(args.outdir) if args.outdir else src.parent
         try:
-            pdf = convert(soffice, src, out_dir, timeout=args.timeout, retries=args.retries)
+            pdf = convert(soffice, src, out_dir, timeout=timeout, retries=retries, used=written)
             print(f"  ✅ {src.name}  →  {pdf}")
             ok += 1
         except Exception as e:

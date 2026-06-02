@@ -56,8 +56,13 @@
     els.btnImgPdf.addEventListener('click', doImagePdf);
 
     // 내보내기 메뉴 + 출력 기능
-    els.btnMore.addEventListener('click', function (e) { e.stopPropagation(); els.morePop.hidden = !els.morePop.hidden; });
-    document.addEventListener('click', function (e) { if (!e.target.closest('.menu')) els.morePop.hidden = true; });
+    els.btnMore.addEventListener('click', function (e) {
+      e.stopPropagation(); var open = els.morePop.hidden;
+      els.morePop.hidden = !open; els.btnMore.setAttribute('aria-expanded', String(open));
+    });
+    document.addEventListener('click', function (e) {
+      if (!e.target.closest('.menu')) { els.morePop.hidden = true; els.btnMore.setAttribute('aria-expanded', 'false'); }
+    });
     els.exPng.addEventListener('click', function () { els.morePop.hidden = true; doExportPng(); });
     els.exMdCopy.addEventListener('click', function () { els.morePop.hidden = true; doMarkdown(true); });
     els.exMdFile.addEventListener('click', function () { els.morePop.hidden = true; doMarkdown(false); });
@@ -80,8 +85,11 @@
     // PWA 설치
     initInstall();
 
-    // 법적 고지 모달
-    els.openLegal.addEventListener('click', function () { els.legalModal.hidden = false; });
+    // 법적 고지 모달 (포커스 이동/복원)
+    els.openLegal.addEventListener('click', function () {
+      legalReturnFocus = document.activeElement;
+      els.legalModal.hidden = false; els.closeLegal.focus();
+    });
     els.closeLegal.addEventListener('click', closeLegal);
     els.legalModal.addEventListener('click', function (e) { if (e.target.hasAttribute('data-close')) closeLegal(); });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !els.legalModal.hidden) closeLegal(); });
@@ -105,17 +113,31 @@
       if (ext !== 'hwp' && ext !== 'hwpx' && ext !== 'docx') { toast('지원하지 않는 형식: ' + file.name + ' (.hwp/.hwpx/.docx)', 'err'); return; }
       var reader = new FileReader();
       reader.onload = function () { addBuffer(reader.result, file.name); };
+      reader.onerror = function () { toast('파일을 읽을 수 없습니다: ' + file.name, 'err'); };
       reader.readAsArrayBuffer(file);
     });
   }
 
   function addBuffer(arrayBuffer, name) {
     var ext = (name.split('.').pop() || '').toLowerCase();
-    var f = { id: ++uid, name: name, ext: ext, buf: arrayBuffer, status: 'pending', rendered: null, error: null };
+    var kind = sniffFormat(arrayBuffer, ext);
+    var f = { id: ++uid, name: name, ext: ext, kind: kind, buf: arrayBuffer, status: 'pending', rendered: null, error: null };
     state.files.push(f);
     els.queueWrap.hidden = false;
     renderQueue();
     return processFile(f);
+  }
+
+  // 확장자가 아니라 실제 내용(매직바이트)으로 형식을 판별한다.
+  //  · OLE/CFB(D0 CF 11 E0 …) = 구형 바이너리 HWP — .hwpx 로 잘못 저장/이름변경된 경우가 흔함
+  //  · ZIP(PK…) = 진짜 HWPX 또는 DOCX → 확장자로 구분
+  function sniffFormat(buf, ext) {
+    try {
+      var u8 = new Uint8Array(buf, 0, Math.min(8, buf.byteLength || 0));
+      if (u8[0] === 0xD0 && u8[1] === 0xCF && u8[2] === 0x11 && u8[3] === 0xE0) return 'hwp';
+      if (u8[0] === 0x50 && u8[1] === 0x4B) return (ext === 'docx') ? 'docx' : 'hwpx';
+    } catch (e) { /* 판별 실패 시 확장자 신뢰 */ }
+    return ext;
   }
 
   function clearAll() {
@@ -135,7 +157,7 @@
       var spinner = (f.status === 'pending' || f.status === 'working') ? '<span class="fspin"></span>' : '';
 
       li.innerHTML =
-        '<span class="ficon ' + f.ext + '">' + f.ext.toUpperCase() + '</span>' +
+        '<span class="ficon ' + (f.kind || f.ext) + '" title="실제 형식: ' + (f.kind || f.ext).toUpperCase() + '">' + (f.kind || f.ext).toUpperCase() + '</span>' +
         '<span class="fmeta"><span class="fname">' + escapeHtml(f.name) + '</span>' +
         '<span class="fstat ' + statCls + '">' + statTxt + (f.error ? ' · ' + escapeHtml(f.error) : '') + '</span></span>' +
         spinner +
@@ -158,10 +180,10 @@
   async function processFile(f) {
     f.status = 'working'; renderQueue();
     try {
-      if (f.ext === 'hwpx') {
+      if (f.kind === 'hwpx') {
         f.rendered = await window.HWPX.parse(f.buf.slice(0));
         f.status = 'done';
-      } else if (f.ext === 'docx') {
+      } else if (f.kind === 'docx') {
         f.rendered = await window.DOCXX.parse(f.buf.slice(0));
         f.status = 'done';
       } else {
@@ -221,7 +243,9 @@
   // 구형 .hwp 본문은 OLE 안에 압축 저장돼 브라우저에서 정밀 재현이 어렵습니다.
   // 대신 한글이 저장해 둔 PrvImage(첫 페이지 렌더)·PrvText 를 꺼내 보여줍니다.
   async function renderHwp(f) {
-    var CFB = await import('https://esm.sh/cfb@1.2.2');
+    var CFB;
+    try { CFB = await import('https://esm.sh/cfb@1.2.2'); }
+    catch (e) { throw new Error('오프라인에서는 .hwp(구형) 변환에 최초 1회 온라인 접속이 필요해요. (.hwpx 는 오프라인 가능)'); }
     var read = CFB.read || (CFB.default && CFB.default.read);
     var find = CFB.find || (CFB.default && CFB.default.find);
     var cfb;
@@ -247,8 +271,11 @@
       text = new TextDecoder('utf-16le').decode(new Uint8Array(pv.content)).replace(/ /g, '').trim();
     }
 
-    var banner = '<div class="fb-banner">⚠️ 구형 <b>.hwp</b> 형식은 한글이 저장해 둔 <b>첫 페이지 미리보기</b>로 표시됩니다. ' +
-      '표·서식·여러 페이지까지 <b>정밀하게</b> 변환하려면 한글에서 <b>다른 이름으로 저장 → 한/글 문서(*.hwpx)</b> 로 저장한 뒤 다시 올려 주세요.</div>';
+    var misNote = (f.ext === 'hwpx' || f.ext === 'docx')
+      ? '이 파일은 확장자가 <b>.' + f.ext + '</b> 이지만 실제 내용은 <b>구형 .hwp(바이너리)</b> 형식이에요. '
+      : '';
+    var banner = '<div class="fb-banner">⚠️ ' + misNote + '구형 <b>.hwp</b> 형식은 한글이 저장해 둔 <b>첫 페이지 미리보기</b>로 표시됩니다.<br>' +
+      '✅ <b>완전 변환 방법</b> — 한글에서 이 문서를 열고 <b>파일 → 다른 이름으로 저장 → 「한/글 문서 (*.hwpx)」</b> 로 저장한 뒤 그 파일을 올리면 표·서식·수식까지 그대로 변환됩니다. (또는 저장소의 <b>CLI</b> 사용)</div>';
 
     var body;
     if (imgHtml) {
@@ -296,8 +323,27 @@
   async function fileToCanvas(f, scale) {
     var el = offscreenSheet(f);
     document.body.appendChild(el);
-    try { return await Exporters.sheetToCanvas(el, scale || 2); }
-    finally { el.remove(); }
+    try {
+      // 브라우저 캔버스 한계(≈16384px/변) 안으로 scale 조정 — 긴 문서가 빈/잘린 결과로
+      // 조용히 나오는 것을 방지. 한계를 넘으면 인쇄(PDF로 저장)를 안내.
+      var s = scale || 2;
+      var hPx = el.offsetHeight || (f.rendered.meta.page.hMm * PX_PER_MM);
+      var wPx = el.offsetWidth || (f.rendered.meta.page.wMm * PX_PER_MM);
+      var MAXSIDE = 16000;
+      if (hPx * s > MAXSIDE) s = MAXSIDE / hPx;
+      if (wPx * s > MAXSIDE) s = Math.min(s, MAXSIDE / wPx);
+      var canvas = await Exporters.sheetToCanvas(el, s);
+      if (!canvas || !canvas.width || !canvas.height) {
+        throw new Error('문서가 너무 길어 이미지 변환에 실패했어요. “PDF로 저장”(인쇄)을 이용해 주세요');
+      }
+      return canvas;
+    } finally { el.remove(); }
+  }
+  function ensureLibs() {
+    if (!window.Exporters || !window.html2canvas || !window.jspdf || !window.JSZip) {
+      toast('필요한 라이브러리를 불러오지 못했어요(네트워크 확인)', 'err'); return false;
+    }
+    return true;
   }
   function baseName(f) { return f.name.replace(/\.(hwp|hwpx|docx)$/i, ''); }
   function currentFile() { return state.files.find(function (x) { return x.id === state.current; }); }
@@ -305,7 +351,7 @@
   // ---- PDF: 이미지(즉시 다운로드) -----------------------------------
   async function doImagePdf() {
     var f = currentFile(); if (!f) return;
-    if (!window.Exporters || !window.jspdf) { toast('PDF 라이브러리 로드 실패', 'err'); return; }
+    if (!ensureLibs()) return;
     busy(true, '이미지 PDF 생성 중…');
     try {
       var canvas = await fileToCanvas(f, 2);
@@ -318,11 +364,13 @@
   // ---- PNG 내보내기 (페이지별; 여러 장이면 ZIP) ----------------------
   async function doExportPng() {
     var f = currentFile(); if (!f) return;
+    if (!ensureLibs()) return;
     busy(true, 'PNG 생성 중…');
     try {
       var canvas = await fileToCanvas(f, 2);
       var blobs = await Exporters.canvasToPngBlobs(canvas, f.rendered.meta);
-      if (blobs.length <= 1) {
+      if (!blobs.length) { toast('내보낼 내용이 없어요', 'err'); return; }
+      if (blobs.length === 1) {
         Exporters.downloadBlob(blobs[0], baseName(f) + '.png');
       } else {
         await Exporters.zipBlobs(blobs.map(function (b, i) { return { name: baseName(f) + '_' + (i + 1) + '.png', blob: b }; }), baseName(f) + '_PNG.zip');
@@ -335,6 +383,7 @@
   // ---- 텍스트/마크다운 추출 -----------------------------------------
   async function doMarkdown(copy) {
     var f = currentFile(); if (!f) return;
+    if (!window.Exporters) { toast('라이브러리를 불러오지 못했어요', 'err'); return; }
     try {
       var md = Exporters.sheetToMarkdown(els.sheet) || '';
       if (copy) {
@@ -351,6 +400,7 @@
   async function doZipAll() {
     var done = state.files.filter(function (x) { return (x.status === 'done' || x.status === 'warn') && x.rendered; });
     if (done.length < 2) return;
+    if (!ensureLibs()) return;
     busy(true, '전체 PDF 생성 중…');
     try {
       var items = [];
@@ -409,5 +459,9 @@
     clearTimeout(toastTimer); toastTimer = setTimeout(function () { els.toast.hidden = true; }, ms || 2400);
   }
   function busy(on, text) { els.busy.hidden = !on; if (text) els.busyText.textContent = text; }
-  function closeLegal() { els.legalModal.hidden = true; }
+  var legalReturnFocus = null;
+  function closeLegal() {
+    els.legalModal.hidden = true;
+    if (legalReturnFocus && legalReturnFocus.focus) { try { legalReturnFocus.focus(); } catch (e) {} }
+  }
 })();

@@ -16,11 +16,11 @@
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" integrity="sha384-7zkQWkzuo3B5mTepMUcHkMB5jZaolc2xDwL6VFqjFALcbeS9Ggm/Yr2r3Dy4lfFg" crossorigin="anonymous"></script>
 
 <!-- Unzip (.hwpx), PDF + raster -->
-<script defer src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous"></script>
 <!-- DOCX 렌더링 -->
-<script defer src="https://cdn.jsdelivr.net/npm/docx-preview@0.3.5/dist/docx-preview.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/docx-preview@0.3.5/dist/docx-preview.min.js" integrity="sha384-XETEC39BEI+1nILZ5N2gFQcu6ii4k3avoqyi4YwQMbs29xkt01EKMqd9rFvic0Wu" crossorigin="anonymous"></script>
 
 <link rel="stylesheet" href="styles.css" />
 
@@ -93,7 +93,7 @@
         <button id="btnPrint" class="btn btn-primary" type="button" title="브라우저 인쇄로 PDF 저장 (텍스트 선택·검색 가능, 가장 정확)">PDF로 저장</button>
         <button id="btnImgPdf" class="btn btn-secondary" type="button" title="이미지 기반 PDF 즉시 다운로드">이미지 PDF</button>
         <div class="menu">
-          <button id="btnMore" class="btn btn-ghost" type="button" aria-haspopup="true" title="다른 형식으로 내보내기">내보내기 ▾</button>
+          <button id="btnMore" class="btn btn-ghost" type="button" aria-haspopup="true" aria-controls="morePop" aria-expanded="false" title="다른 형식으로 내보내기">내보내기 ▾</button>
           <div id="morePop" class="menu-pop" hidden>
             <button id="exPng" type="button">🖼️ PNG 이미지로 저장<small>페이지별 PNG · 여러 장이면 ZIP</small></button>
             <button id="exMdCopy" type="button">📋 텍스트·마크다운 복사<small>표·수식($LaTeX$) 포함 · 클립보드</small></button>

@@ -27,6 +27,12 @@
   }
   function localName(el){ return el.localName || (el.nodeName.indexOf(':')>=0 ? el.nodeName.split(':')[1] : el.nodeName); }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  // 인라인 style 에 들어가는 값 보안 처리(악의적 .hwpx 의 속성값 주입 방지)
+  function safeColor(v){
+    v = String(v==null?'':v).trim();
+    return (/^#[0-9a-fA-F]{3,8}$/.test(v) || /^[a-zA-Z]{1,20}$/.test(v) || /^rgba?\([0-9.,%\s]+\)$/.test(v)) ? v : '#000000';
+  }
+  function sanFace(f){ return String(f==null?'':f).replace(/["'<>;{}\\()]/g, ''); }
 
   var SANS = '"Apple SD Gothic Neo","Malgun Gothic","맑은 고딕",sans-serif';
   var SERIF = '"Noto Serif KR",serif';
@@ -76,7 +82,7 @@
       var color = attr(cp,'textColor','#000000');
       var props = {
         sizePt: (parseFloat(attr(cp,'height','1000'))||1000)/100,
-        color: (color && color.toLowerCase()!=='none') ? color : '#000000',
+        color: (color && color.toLowerCase()!=='none') ? safeColor(color) : '#000000',
         bold: !!tag(cp,'hh:bold'),
         italic: !!tag(cp,'hh:italic'),
         underline: ul ? (attr(ul,'type','NONE')!=='NONE') : false,
@@ -92,8 +98,11 @@
     tags(doc, 'hh:paraPr').forEach(function(pp){
       var al = tag(pp,'hh:align');
       var bs = tag(pp,'hh:breakSetting');
-      var ls = tag(pp,'hh:lineSpacing');
-      var mg = tag(pp,'hh:margin');
+      // margin/lineSpacing 은 hp:switch 안에 case/default 두 벌이 들어있음 → 기본(default) 분기를 우선
+      var def = tag(pp,'hp:default');
+      var scope = def || pp;
+      var ls = tag(scope,'hh:lineSpacing') || tag(pp,'hh:lineSpacing');
+      var mg = tag(scope,'hh:margin') || tag(pp,'hh:margin');
       function mv(node, child){ var c = node?tag(node,child):null; return c?parseFloat(attr(c,'value','0')):0; }
       var props = {
         align: this.mapAlign(al ? attr(al,'horizontal','LEFT') : 'LEFT'),
@@ -125,7 +134,7 @@
         var type = attr(b,'type','NONE');
         if(type==='NONE') return null;
         var w = parseFloat(attr(b,'width','0.1')) || 0.12;
-        var c = attr(b,'color','#000000');
+        var c = safeColor(attr(b,'color','#000000'));
         var style = (type==='DOT'||type==='DASH')?'dashed':(type==='DOUBLE')?'double':'solid';
         return w.toFixed(2)+'mm '+style+' '+c;
       }
@@ -134,7 +143,7 @@
       this.borderFills[attr(bf,'id')] = {
         t: side('hh:topBorder'), r: side('hh:rightBorder'),
         b: side('hh:bottomBorder'), l: side('hh:leftBorder'),
-        bg: (bg && bg.toLowerCase()!=='none') ? bg : null
+        bg: (bg && bg.toLowerCase()!=='none') ? safeColor(bg) : null
       };
     }, this);
   };
@@ -156,7 +165,7 @@
     var hanja  = (this.fontfaces.HANJA ||[])[parseInt(attr(fontRef,'hanja','0'),10)] || '';
     var fb = isSerifFace(hangul) ? '"Noto Serif KR",'+SERIF+','+SANS : SANS_KR;
     var stack = [];
-    [latin, hangul, hanja].forEach(function(f){ if(f && stack.indexOf(f)<0) stack.push(f); });
+    [latin, hangul, hanja].forEach(function(f){ var sf = sanFace(f); if(sf && stack.indexOf(sf)<0) stack.push(sf); });
     var quoted = stack.map(function(f){ return '"'+f+'"'; }).join(',');
     return (quoted ? quoted+',' : '') + fb;
   };

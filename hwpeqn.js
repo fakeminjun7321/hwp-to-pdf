@@ -56,7 +56,8 @@
   // 함수 이름 (\operatorname 처리되는 것들)
   var FUNCS = ['sin','cos','tan','cot','sec','csc','sinh','cosh','tanh','coth',
     'log','ln','exp','lim','limsup','liminf','max','min','det','gcd','arg',
-    'dim','ker','deg','hom','sup','arcsin','arccos','arctan'].reduce(function(o,f){o[f]='\\'+f;return o;},{});
+    'dim','ker','hom','sup','arcsin','arccos','arctan'].reduce(function(o,f){o[f]='\\'+f;return o;},{});
+  // 'deg' 는 함수가 아니라 도(°) 기호로 처리 — SYMBOL 의 deg:'^{\\circ}' 사용
   // 인자 하나를 먹는 접두 명령 (악센트/스타일)
   var PREFIX1 = {
     sqrt:'\\sqrt', bold:'\\mathbf', rm:'\\mathrm', it:'\\mathit', cal:'\\mathcal',
@@ -102,7 +103,8 @@
       var atoms = [];
       while(i < tokens.length){
         var t = tokens[i];
-        if(t === '}'){ if(stopBrace){ i++; } break; }
+        // 닫는 중괄호: 그룹 안이면 종료, 최상위의 짝 안 맞는 } 는 무시하고 계속(뒤 내용 보존)
+        if(t === '}'){ i++; if(stopBrace) break; else continue; }
         if(t === '{'){ i++; atoms.push({t:'grp', body:group(true)}); continue; }
         i++; atoms.push({t:'tok', v:t});
       }
@@ -149,6 +151,8 @@
     var out = atoms.slice();
     for(var i=0;i<out.length;i++){
       if(isTok(out[i],'over') || isTok(out[i],'atop')){
+        // 피연산자가 없으면(맨 앞/맨 뒤) 토큰만 제거 — splice(-1,..) 무한루프 방지
+        if(i-1 < 0 || i+1 >= out.length){ out.splice(i,1); i--; continue; }
         var op = isTok(out[i],'over') ? '\\frac' : '\\genfrac{}{}{0pt}{}';
         var L = out[i-1], R = out[i+1];
         var raw = { t:'raw', v: op + braced(L) + braced(R) };
@@ -226,7 +230,7 @@
       try{
         return katex.renderToString(latex, {
           displayMode: !!displayMode, throwOnError:false, strict:false,
-          trust:true, output:'html'
+          trust:false, output:'html'   // 신뢰 불가 문서: \href·\includegraphics 등 차단
         });
       }catch(e){ /* fall through */ }
     }

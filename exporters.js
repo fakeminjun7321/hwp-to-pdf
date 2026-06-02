@@ -43,17 +43,25 @@
     var pg = pageMeta.page;
     var orient = pg.wMm > pg.hMm ? 'landscape' : 'portrait';
     var doc = new JsPDF({ unit: 'mm', format: [pg.wMm, pg.hMm], orientation: orient });
+    if (!canvas || !canvas.width || !canvas.height) return doc.output('blob');
 
-    var imgData = canvas.toDataURL('image/jpeg', 0.92);
-    var imgWmm = pg.wMm;
-    var imgHmm = canvas.height * imgWmm / canvas.width;
-    var pageHmm = pg.hMm;
-    var pages = Math.max(1, Math.ceil(imgHmm / pageHmm - 0.001));
-
+    // 페이지별로 캔버스를 잘라 그 조각만 임베드 — 긴 문서에서 전체 이미지를
+    // 페이지마다 중복 저장하던(파일·메모리 폭증) 문제를 막는다.
+    var pageHpx = Math.max(1, Math.round(canvas.width * (pg.hMm / pg.wMm)));
+    var pages = Math.max(1, Math.ceil(canvas.height / pageHpx));
     for (var i = 0; i < pages; i++) {
+      var y = i * pageHpx;
+      var sliceH = Math.min(pageHpx, canvas.height - y);
+      if (sliceH <= 0) break;
+      var tmp = document.createElement('canvas');
+      tmp.width = canvas.width; tmp.height = sliceH;
+      var ctx = tmp.getContext('2d');
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, tmp.width, tmp.height);
+      ctx.drawImage(canvas, 0, y, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+      var sliceData = tmp.toDataURL('image/jpeg', 0.92);
+      var sliceHmm = sliceH * pg.wMm / canvas.width;
       if (i > 0) doc.addPage([pg.wMm, pg.hMm], orient);
-      // 위로 한 페이지씩 밀어 잘라 보여줌
-      doc.addImage(imgData, 'JPEG', 0, -i * pageHmm, imgWmm, imgHmm, undefined, 'FAST');
+      doc.addImage(sliceData, 'JPEG', 0, 0, pg.wMm, sliceHmm, undefined, 'FAST');
     }
     return doc.output('blob');
   }
@@ -253,6 +261,9 @@
       try {
         var tag = (el.tagName || '').toLowerCase();
         var cls = el.classList;
+
+        // docx-preview 등이 주입한 <style>/<script> 는 마크다운에 넣지 않는다
+        if (tag === 'style' || tag === 'script' || tag === 'link' || tag === 'meta' || tag === 'noscript') continue;
 
         if (tag === 'p' && cls && cls.contains('hp-para')) {
           var md = paraToMd(el);
