@@ -450,23 +450,32 @@
     return '<img class="hp-img" src="'+url+'" style="'+dim+'" alt="" />';
   };
 
+  // 직접 자식 중 첫 번째(중첩표 오염 방지용)
+  function directChild(parent, ln){ var ch=elementChildren(parent); for(var i=0;i<ch.length;i++){ if(localName(ch[i])===ln) return ch[i]; } return null; }
+
   // 표
   Parser.prototype.renderTable = function(tbl){
     var rows = elementChildren(tbl).filter(function(e){ return localName(e)==='tr'; });
-    // 열 너비: 첫 행의 cellSz width 합
+    // 표 전체 표시 너비는 hp:sz(표 객체 크기)가 가장 신뢰도 높음
+    // (1열 표가 안쪽에 중첩표를 품으면 cellSz 가 중첩 셀 값으로 오염됨)
+    var szEl = directChild(tbl,'sz');
+    var tableWmm = szEl ? u2mm(attr(szEl,'width','0')) : 0;
+    // 열 너비: 첫 행의 '직접 자식' cellSz (중첩표 셀 무시)
     var colWidths = [];
     if(rows.length){
       elementChildren(rows[0]).filter(function(e){return localName(e)==='tc';}).forEach(function(tc){
-        var cs = tag(tc,'hp:cellSz'); var span = tag(tc,'hp:cellSpan');
+        var cs = directChild(tc,'cellSz'); var span = directChild(tc,'cellSpan');
         var cspan = span?parseInt(attr(span,'colSpan','1'),10):1;
         var w = cs?u2mm(attr(cs,'width','0')):0;
         for(var j=0;j<cspan;j++) colWidths.push(w/cspan);
       });
     }
-    var totalW = colWidths.reduce(function(a,b){return a+b;},0);
-    var html = '<table class="hp-tbl" style="'+(totalW?('width:'+totalW.toFixed(1)+'mm;'):'')+'max-width:100%">';
-    if(colWidths.length){
-      html += '<colgroup>'+colWidths.map(function(w){return '<col style="width:'+w.toFixed(2)+'mm">';}).join('')+'</colgroup>';
+    var colSum = colWidths.reduce(function(a,b){return a+b;},0);
+    var tw = tableWmm>0 ? tableWmm : colSum;   // 표 너비
+    var html = '<table class="hp-tbl" style="'+(tw>0?('width:'+tw.toFixed(1)+'mm;'):'width:100%;')+'max-width:100%">';
+    if(colWidths.length && colSum>0){
+      // 열은 비율(%)로 — tw 를 꽉 채움
+      html += '<colgroup>'+colWidths.map(function(w){return '<col style="width:'+(w/colSum*100).toFixed(3)+'%">';}).join('')+'</colgroup>';
     }
     rows.forEach(function(tr){
       html += '<tr>';
@@ -480,7 +489,7 @@
   };
 
   Parser.prototype.renderCell = function(tc){
-    var span = tag(tc,'hp:cellSpan');
+    var span = directChild(tc,'cellSpan');
     var cspan = span?parseInt(attr(span,'colSpan','1'),10):1;
     var rspan = span?parseInt(attr(span,'rowSpan','1'),10):1;
     var bf = this.borderFills[attr(tc,'borderFillIDRef')];
@@ -494,8 +503,8 @@
     } else {
       css.push('border:0.12mm solid #bbb');
     }
-    // 셀 안 문단들 (hp:subList > hp:p)
-    var sub = tag(tc,'hp:subList');
+    // 셀 안 문단들 (hp:subList > hp:p) — 직접 자식만(중첩표 분리)
+    var sub = directChild(tc,'subList');
     var content = '';
     if(sub){
       elementChildren(sub).filter(function(e){return localName(e)==='p';}).forEach(function(p){
