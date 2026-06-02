@@ -19,12 +19,22 @@
 <script defer src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+<!-- DOCX 렌더링 -->
+<script defer src="https://cdn.jsdelivr.net/npm/docx-preview@0.3.5/dist/docx-preview.min.js"></script>
 
 <link rel="stylesheet" href="styles.css" />
+
+<!-- PWA (설치형 · 오프라인) -->
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="theme-color" content="#2f6fed" />
+<link rel="apple-touch-icon" href="icon.svg" />
+<link rel="icon" href="icon.svg" type="image/svg+xml" />
 
 <!-- App modules -->
 <script defer src="hwpeqn.js"></script>
 <script defer src="hwpx.js"></script>
+<script defer src="docx.js"></script>
+<script defer src="exporters.js"></script>
 <script defer src="app.js"></script>
 </head>
 <body>
@@ -33,19 +43,23 @@
     <span class="logo">한→PDF</span>
     <div class="brand-text">
       <h1>한글 문서 PDF 변환기</h1>
-      <p class="tagline">HWP · HWPX → PDF &nbsp;|&nbsp; <span class="lock">🔒 파일이 서버로 전송되지 않습니다 (브라우저에서만 처리)</span></p>
+      <p class="tagline">HWP · HWPX · DOCX → PDF &nbsp;|&nbsp; <span class="lock">🔒 파일이 서버로 전송되지 않습니다 (브라우저에서만 처리)</span></p>
     </div>
   </div>
-  <a class="gh-link" href="https://github.com/" target="_blank" rel="noopener" title="소스 코드">소스</a>
+  <div class="top-actions">
+    <button id="installBtn" class="btn btn-ghost btn-sm" type="button" hidden title="홈 화면/바탕화면에 앱으로 설치">⬇️ 설치</button>
+    <button id="themeToggle" class="icon-btn" type="button" title="다크 모드 전환" aria-label="다크 모드 전환">🌙</button>
+    <a class="gh-link" href="https://github.com/fakeminjun7321/hwp-to-pdf" target="_blank" rel="noopener" title="소스 코드">소스</a>
+  </div>
 </header>
 
 <main>
   <!-- ===== Drop / file picker ===== -->
   <section id="dropzone" class="dropzone" tabindex="0" aria-label="파일을 끌어다 놓거나 선택">
-    <input id="fileInput" type="file" accept=".hwp,.hwpx" multiple hidden />
+    <input id="fileInput" type="file" accept=".hwp,.hwpx,.docx" multiple hidden />
     <div class="dz-inner">
       <div class="dz-icon">📄→📕</div>
-      <p class="dz-title">여기로 <b>HWP·HWPX</b> 파일을 끌어다 놓으세요</p>
+      <p class="dz-title">여기로 <b>HWP · HWPX · DOCX</b> 파일을 끌어다 놓으세요</p>
       <p class="dz-sub">또는 클릭해서 선택 · 여러 개 한꺼번에 가능</p>
       <button id="pickBtn" class="btn btn-primary" type="button">파일 선택</button>
     </div>
@@ -55,7 +69,10 @@
   <section id="queueWrap" class="queue-wrap" hidden>
     <div class="queue-head">
       <h2>변환 목록</h2>
-      <button id="clearBtn" class="btn btn-ghost btn-sm" type="button">전체 비우기</button>
+      <div class="qh-actions">
+        <button id="zipAllBtn" class="btn btn-secondary btn-sm" type="button" hidden title="변환된 문서를 모두 PDF로 묶어 ZIP 다운로드">📦 전체 PDF · ZIP</button>
+        <button id="clearBtn" class="btn btn-ghost btn-sm" type="button">전체 비우기</button>
+      </div>
     </div>
     <ul id="queue" class="queue"></ul>
   </section>
@@ -75,6 +92,14 @@
         </div>
         <button id="btnPrint" class="btn btn-primary" type="button" title="브라우저 인쇄로 PDF 저장 (텍스트 선택·검색 가능, 가장 정확)">PDF로 저장</button>
         <button id="btnImgPdf" class="btn btn-secondary" type="button" title="이미지 기반 PDF 즉시 다운로드">이미지 PDF</button>
+        <div class="menu">
+          <button id="btnMore" class="btn btn-ghost" type="button" aria-haspopup="true" title="다른 형식으로 내보내기">내보내기 ▾</button>
+          <div id="morePop" class="menu-pop" hidden>
+            <button id="exPng" type="button">🖼️ PNG 이미지로 저장<small>페이지별 PNG · 여러 장이면 ZIP</small></button>
+            <button id="exMdCopy" type="button">📋 텍스트·마크다운 복사<small>표·수식($LaTeX$) 포함 · 클립보드</small></button>
+            <button id="exMdFile" type="button">⬇️ 마크다운(.md) 다운로드<small>메모·재활용용</small></button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -159,6 +184,7 @@
           <tr><td><a href="https://github.com/parallax/jsPDF" target="_blank" rel="noopener">jsPDF</a></td><td>이미지 PDF</td><td>MIT</td></tr>
           <tr><td><a href="https://github.com/niklasvh/html2canvas" target="_blank" rel="noopener">html2canvas</a></td><td>화면 캡처</td><td>MIT</td></tr>
           <tr><td><a href="https://github.com/SheetJS/js-cfb" target="_blank" rel="noopener">SheetJS cfb</a></td><td>.hwp(OLE) 읽기</td><td>Apache-2.0</td></tr>
+          <tr><td><a href="https://github.com/VolodymyrBaydalka/docxjs" target="_blank" rel="noopener">docx-preview</a></td><td>.docx 렌더링</td><td>Apache-2.0</td></tr>
           <tr><td><a href="https://fonts.google.com/noto" target="_blank" rel="noopener">Noto Sans/Serif KR</a></td><td>한글 글꼴</td><td>SIL OFL 1.1</td></tr>
         </tbody>
       </table>
@@ -170,5 +196,15 @@
     </div>
   </div>
 </div>
+
+<!-- PWA: 서비스 워커 등록 (오프라인 · 설치형) -->
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('./sw.js', { scope: './' })
+        .catch(function (err) { console.error('SW registration failed:', err); });
+    });
+  }
+</script>
 </body>
 </html>

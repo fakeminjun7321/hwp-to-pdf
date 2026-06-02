@@ -23,7 +23,10 @@
       btnPrint: $('#btnPrint'), btnImgPdf: $('#btnImgPdf'),
       printStyle: $('#printStyle'), toast: $('#toast'),
       busy: $('#busy'), busyText: $('#busyText'),
-      openLegal: $('#openLegal'), closeLegal: $('#closeLegal'), legalModal: $('#legalModal')
+      openLegal: $('#openLegal'), closeLegal: $('#closeLegal'), legalModal: $('#legalModal'),
+      zipAllBtn: $('#zipAllBtn'), btnMore: $('#btnMore'), morePop: $('#morePop'),
+      exPng: $('#exPng'), exMdCopy: $('#exMdCopy'), exMdFile: $('#exMdFile'),
+      themeToggle: $('#themeToggle'), installBtn: $('#installBtn')
     };
 
     els.pickBtn.addEventListener('click', function (e) { e.stopPropagation(); els.fileInput.click(); });
@@ -52,6 +55,31 @@
     els.btnPrint.addEventListener('click', doPrint);
     els.btnImgPdf.addEventListener('click', doImagePdf);
 
+    // 내보내기 메뉴 + 출력 기능
+    els.btnMore.addEventListener('click', function (e) { e.stopPropagation(); els.morePop.hidden = !els.morePop.hidden; });
+    document.addEventListener('click', function (e) { if (!e.target.closest('.menu')) els.morePop.hidden = true; });
+    els.exPng.addEventListener('click', function () { els.morePop.hidden = true; doExportPng(); });
+    els.exMdCopy.addEventListener('click', function () { els.morePop.hidden = true; doMarkdown(true); });
+    els.exMdFile.addEventListener('click', function () { els.morePop.hidden = true; doMarkdown(false); });
+    els.zipAllBtn.addEventListener('click', doZipAll);
+
+    // 수식 클릭 → LaTeX 복사
+    els.sheet.addEventListener('click', function (e) {
+      var eq = e.target.closest && e.target.closest('.hp-eq[data-latex]');
+      if (eq && eq.getAttribute('data-latex')) {
+        Exporters.copyText(eq.getAttribute('data-latex')).then(function (ok) {
+          toast(ok ? 'LaTeX 복사됨: ' + eq.getAttribute('data-latex').slice(0, 40) : '복사 실패', ok ? 'ok' : 'err');
+        });
+      }
+    });
+
+    // 다크 모드
+    initTheme();
+    els.themeToggle.addEventListener('click', toggleTheme);
+
+    // PWA 설치
+    initInstall();
+
     // 법적 고지 모달
     els.openLegal.addEventListener('click', function () { els.legalModal.hidden = false; });
     els.closeLegal.addEventListener('click', closeLegal);
@@ -74,7 +102,7 @@
     var arr = Array.prototype.slice.call(fileList || []);
     arr.forEach(function (file) {
       var ext = (file.name.split('.').pop() || '').toLowerCase();
-      if (ext !== 'hwp' && ext !== 'hwpx') { toast('지원하지 않는 형식: ' + file.name, 'err'); return; }
+      if (ext !== 'hwp' && ext !== 'hwpx' && ext !== 'docx') { toast('지원하지 않는 형식: ' + file.name + ' (.hwp/.hwpx/.docx)', 'err'); return; }
       var reader = new FileReader();
       reader.onload = function () { addBuffer(reader.result, file.name); };
       reader.readAsArrayBuffer(file);
@@ -115,6 +143,8 @@
       li.querySelector('.fx').onclick = function (e) { e.stopPropagation(); removeFile(f); };
       els.queue.appendChild(li);
     });
+    var doneCount = state.files.filter(function (x) { return x.status === 'done' || x.status === 'warn'; }).length;
+    els.zipAllBtn.hidden = doneCount < 2;
   }
 
   function removeFile(f) {
@@ -130,6 +160,9 @@
     try {
       if (f.ext === 'hwpx') {
         f.rendered = await window.HWPX.parse(f.buf.slice(0));
+        f.status = 'done';
+      } else if (f.ext === 'docx') {
+        f.rendered = await window.DOCXX.parse(f.buf.slice(0));
         f.status = 'done';
       } else {
         f.rendered = await renderHwp(f);
@@ -250,38 +283,121 @@
     }, 250);
   }
 
+  // ---- 오프스크린 렌더 (화면 줌/다크모드 영향 없이 항상 흰 종이로 캡처) ----
+  function offscreenSheet(f) {
+    var m = f.rendered.meta, pg = m.page, mg = m.margin;
+    var el = document.createElement('div');
+    el.className = 'sheet';
+    el.style.cssText = 'position:absolute;left:-99999px;top:0;width:' + pg.wMm + 'mm;min-height:' + pg.hMm +
+      'mm;padding:' + mg.t + 'mm ' + mg.r + 'mm ' + mg.b + 'mm ' + mg.l + 'mm;box-sizing:border-box;background:#fff;color:#000';
+    el.innerHTML = f.rendered.html;
+    return el;
+  }
+  async function fileToCanvas(f, scale) {
+    var el = offscreenSheet(f);
+    document.body.appendChild(el);
+    try { return await Exporters.sheetToCanvas(el, scale || 2); }
+    finally { el.remove(); }
+  }
+  function baseName(f) { return f.name.replace(/\.(hwp|hwpx|docx)$/i, ''); }
+  function currentFile() { return state.files.find(function (x) { return x.id === state.current; }); }
+
   // ---- PDF: 이미지(즉시 다운로드) -----------------------------------
   async function doImagePdf() {
-    if (state.current == null) return;
-    var f = state.files.find(function (x) { return x.id === state.current; });
-    if (!f) return;
-    if (typeof html2canvas === 'undefined' || !window.jspdf) { toast('PDF 라이브러리 로드 실패', 'err'); return; }
-
+    var f = currentFile(); if (!f) return;
+    if (!window.Exporters || !window.jspdf) { toast('PDF 라이브러리 로드 실패', 'err'); return; }
     busy(true, '이미지 PDF 생성 중…');
-    var z = state.zoom; els.sheet.style.transform = 'none';
     try {
-      var m = f.rendered.meta, pg = m.page;
-      var canvas = await html2canvas(els.sheet, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
-      var imgData = canvas.toDataURL('image/jpeg', 0.92);
-      var jsPDF = window.jspdf.jsPDF;
-      var orient = pg.wMm > pg.hMm ? 'landscape' : 'portrait';
-      var pdf = new jsPDF({ unit: 'mm', format: [pg.wMm, pg.hMm], orientation: orient });
-      var imgWmm = pg.wMm;
-      var imgHmm = canvas.height * pg.wMm / canvas.width;
-      var pageHmm = pg.hMm;
-      var pages = Math.max(1, Math.ceil(imgHmm / pageHmm - 0.001));
-      for (var i = 0; i < pages; i++) {
-        if (i > 0) pdf.addPage([pg.wMm, pg.hMm], orient);
-        pdf.addImage(imgData, 'JPEG', 0, -i * pageHmm, imgWmm, imgHmm, undefined, 'FAST');
-      }
-      pdf.save(f.name.replace(/\.(hwp|hwpx)$/i, '') + '.pdf');
+      var canvas = await fileToCanvas(f, 2);
+      Exporters.downloadBlob(Exporters.canvasToPdfBlob(canvas, f.rendered.meta), baseName(f) + '.pdf');
       toast('PDF 다운로드 완료', 'ok');
-    } catch (e) {
-      console.error(e); toast('이미지 PDF 실패: ' + (e.message || ''), 'err');
-    } finally {
-      els.sheet.style.transform = 'scale(' + z + ')';
-      busy(false);
+    } catch (e) { console.error(e); toast('이미지 PDF 실패: ' + (e.message || ''), 'err'); }
+    finally { busy(false); }
+  }
+
+  // ---- PNG 내보내기 (페이지별; 여러 장이면 ZIP) ----------------------
+  async function doExportPng() {
+    var f = currentFile(); if (!f) return;
+    busy(true, 'PNG 생성 중…');
+    try {
+      var canvas = await fileToCanvas(f, 2);
+      var blobs = await Exporters.canvasToPngBlobs(canvas, f.rendered.meta);
+      if (blobs.length <= 1) {
+        Exporters.downloadBlob(blobs[0], baseName(f) + '.png');
+      } else {
+        await Exporters.zipBlobs(blobs.map(function (b, i) { return { name: baseName(f) + '_' + (i + 1) + '.png', blob: b }; }), baseName(f) + '_PNG.zip');
+      }
+      toast('PNG ' + blobs.length + '장 저장 완료', 'ok');
+    } catch (e) { console.error(e); toast('PNG 실패: ' + (e.message || ''), 'err'); }
+    finally { busy(false); }
+  }
+
+  // ---- 텍스트/마크다운 추출 -----------------------------------------
+  async function doMarkdown(copy) {
+    var f = currentFile(); if (!f) return;
+    try {
+      var md = Exporters.sheetToMarkdown(els.sheet) || '';
+      if (copy) {
+        var ok = await Exporters.copyText(md);
+        toast(ok ? '마크다운 복사됨 (' + md.length + '자)' : '복사 실패', ok ? 'ok' : 'err');
+      } else {
+        Exporters.downloadBlob(new Blob([md], { type: 'text/markdown;charset=utf-8' }), baseName(f) + '.md');
+        toast('마크다운(.md) 다운로드', 'ok');
+      }
+    } catch (e) { console.error(e); toast('마크다운 실패: ' + (e.message || ''), 'err'); }
+  }
+
+  // ---- 전체 PDF · ZIP ------------------------------------------------
+  async function doZipAll() {
+    var done = state.files.filter(function (x) { return (x.status === 'done' || x.status === 'warn') && x.rendered; });
+    if (done.length < 2) return;
+    busy(true, '전체 PDF 생성 중…');
+    try {
+      var items = [];
+      for (var i = 0; i < done.length; i++) {
+        busy(true, '전체 PDF 생성 중… (' + (i + 1) + '/' + done.length + ')');
+        var canvas = await fileToCanvas(done[i], 2);
+        items.push({ name: baseName(done[i]) + '.pdf', blob: Exporters.canvasToPdfBlob(canvas, done[i].rendered.meta) });
+      }
+      await Exporters.zipBlobs(items, '변환문서_' + done.length + '개.zip');
+      toast(done.length + '개 PDF · ZIP 다운로드 완료', 'ok');
+    } catch (e) { console.error(e); toast('ZIP 실패: ' + (e.message || ''), 'err'); }
+    finally { busy(false); }
+  }
+
+  // ---- 다크 모드 ----------------------------------------------------
+  function initTheme() {
+    var saved = null;
+    try { saved = localStorage.getItem('hwp2pdf-theme'); } catch (e) {}
+    if (saved === 'dark' || (saved == null && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.setAttribute('data-theme', 'dark');
     }
+    syncThemeIcon();
+  }
+  function toggleTheme() {
+    var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    if (dark) document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', 'dark');
+    try { localStorage.setItem('hwp2pdf-theme', dark ? 'light' : 'dark'); } catch (e) {}
+    syncThemeIcon();
+  }
+  function syncThemeIcon() {
+    els.themeToggle.textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? '☀️' : '🌙';
+  }
+
+  // ---- PWA 설치 -----------------------------------------------------
+  var deferredPrompt = null;
+  function initInstall() {
+    window.addEventListener('beforeinstallprompt', function (e) {
+      e.preventDefault(); deferredPrompt = e; els.installBtn.hidden = false;
+    });
+    els.installBtn.addEventListener('click', async function () {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      try { await deferredPrompt.userChoice; } catch (e) {}
+      deferredPrompt = null; els.installBtn.hidden = true;
+    });
+    window.addEventListener('appinstalled', function () { els.installBtn.hidden = true; });
   }
 
   // ---- 유틸 ----------------------------------------------------------

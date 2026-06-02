@@ -11,6 +11,7 @@
 | [jsPDF](https://github.com/parallax/jsPDF) | 이미지 PDF 생성 | MIT | © 2010–2021 James Hall, yWorks GmbH 및 기여자 |
 | [html2canvas](https://github.com/niklasvh/html2canvas) | 화면 → 캔버스 캡처 | MIT | © Niklas von Hertzen 및 기여자 |
 | [SheetJS `cfb`](https://github.com/SheetJS/js-cfb) | `.hwp`(OLE/CFB) 읽기 | Apache-2.0 | © SheetJS LLC |
+| [docx-preview](https://github.com/VolodymyrBaydalka/docxjs) | `.docx` 렌더링 | Apache-2.0 | © Volodymyr Baydalka 및 기여자 |
 | [Noto Sans KR / Noto Serif KR](https://fonts.google.com/noto) | 한글 글꼴(폴백) | SIL Open Font License 1.1 | © Google LLC |
 
 ## CLI(`cli/hwp2pdf.py`)에서 사용하는 외부 도구

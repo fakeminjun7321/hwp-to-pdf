@@ -1,0 +1,20 @@
+{
+  "name": "한글 문서 PDF 변환기",
+  "short_name": "한→PDF",
+  "description": "HWP·HWPX·DOCX 문서를 브라우저에서 바로 PDF로 (서버 업로드 없음)",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#2f6fed",
+  "background_color": "#f4f5f7",
+  "lang": "ko",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

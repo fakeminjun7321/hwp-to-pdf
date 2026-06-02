@@ -91,6 +91,7 @@
     // 문단모양
     tags(doc, 'hh:paraPr').forEach(function(pp){
       var al = tag(pp,'hh:align');
+      var bs = tag(pp,'hh:breakSetting');
       var ls = tag(pp,'hh:lineSpacing');
       var mg = tag(pp,'hh:margin');
       function mv(node, child){ var c = node?tag(node,child):null; return c?parseFloat(attr(c,'value','0')):0; }
@@ -102,7 +103,8 @@
         mRight: u2mm(mv(mg,'hc:right')),
         indent: u2mm(mv(mg,'hc:intent')),
         spaceBefore: u2mm(mv(mg,'hc:prev')),
-        spaceAfter: u2mm(mv(mg,'hc:next'))
+        spaceAfter: u2mm(mv(mg,'hc:next')),
+        pageBreakBefore: bs ? (attr(bs,'pageBreakBefore','0')==='1') : false
       };
       this.paraPr[attr(pp,'id')] = props;
     }, this);
@@ -265,19 +267,25 @@
     if(pp.indent) css.push('text-indent:'+pp.indent.toFixed(2)+'mm');
     if(pp.spaceBefore) css.push('margin-top:'+pp.spaceBefore.toFixed(2)+'mm');
     if(pp.spaceAfter)  css.push('margin-bottom:'+pp.spaceAfter.toFixed(2)+'mm');
+    // 명시적 쪽 나눔 (문단 속성 또는 문단 자체 pageBreak)
+    if(attr(p,'pageBreak','0')==='1' || pp.pageBreakBefore) css.push('break-before:page');
 
-    var inner = '', blocks = '';
+    var inner = '', blocks = '', floats = '';
     var kids = elementChildren(p);
     for(var i=0;i<kids.length;i++){
       var k = kids[i], ln = localName(k);
       if(ln==='run'){
         var r = this.renderRun(k, styleId);
-        inner += r.inline; blocks += r.block;
+        inner += r.inline; blocks += r.block; floats += r.float;
       }
       // linesegarray, ctrl(문단 레벨) 등은 무시
     }
     var paraHtml = '<p class="hp-para" style="'+css.join(';')+'">'+ (inner || '&#8203;') +'</p>';
-    return paraHtml + blocks; // 표/그림 블록은 문단 뒤에
+    // 부동(floating) 객체가 있으면 문단을 position:relative 래퍼로 감싸 절대배치 기준을 만든다
+    if(floats){
+      return '<div class="hp-pwrap" style="position:relative">'+paraHtml+floats+'</div>'+blocks;
+    }
+    return paraHtml + blocks; // 표 등 블록은 문단 뒤에
   };
 
   Parser.prototype.charCss = function(cp){
@@ -297,10 +305,10 @@
   Parser.prototype.renderRun = function(run, styleId){
     var cp = this.effCharPr(attr(run,'charPrIDRef'), styleId);
     var style = this.charCss(cp);
-    var inline = '', block = '';
+    var inline = '', block = '', flt = '';
     var kids = elementChildren(run);
     for(var i=0;i<kids.length;i++){
-      var k = kids[i], ln = localName(k);
+      var k = kids[i], ln = localName(k), o;
       if(ln==='t'){
         inline += '<span style="'+style+'">'+ this.renderText(k) +'</span>';
       } else if(ln==='equation'){
@@ -308,14 +316,86 @@
       } else if(ln==='tbl'){
         block += this.renderTable(k);
       } else if(ln==='pic' || ln==='picture'){
-        inline += this.renderPic(k);
-      } else if(ln==='container' || ln==='rect' || ln==='ellipse' || ln==='line' || ln==='polygon' || ln==='curve' || ln==='drawText'){
-        var img = tag(k,'hp:img') || tag(k,'hc:img');
-        if(img) inline += this.renderPic(k);
+        o = this.renderObject(k,'pic'); inline += o.inline; flt += o.float;
+      } else if(ln==='container' || ln==='drawText' || ln==='textbox'){
+        o = this.renderObject(k,'box'); inline += o.inline; flt += o.float; block += o.block;
+      } else if(ln==='rect' || ln==='ellipse' || ln==='line' || ln==='polygon' || ln==='curve' || ln==='arc' || ln==='connectLine'){
+        o = this.renderObject(k,'shape'); inline += o.inline; flt += o.float;
       }
       // secPr, ctrl, footNote 등은 생략
     }
-    return { inline:inline, block:block };
+    return { inline:inline, block:block, float:flt };
+  };
+
+  // 객체(그림/글상자/도형) → {inline, float, block}
+  //  · treatAsChar=1 : 글자처럼 인라인 배치
+  //  · treatAsChar=0 : 문단 기준 절대(부동) 배치 (offset 사용)
+  Parser.prototype.renderObject = function(el, kind){
+    var pos = tag(el,'hp:pos');
+    var floating = pos && attr(pos,'treatAsChar','1')==='0';
+    var sz = tag(el,'hp:sz') || tag(el,'hp:curSz') || tag(el,'hp:orgSz');
+    var wmm = sz ? u2mm(attr(sz,'width','0')) : 0;
+    var hmm = sz ? u2mm(attr(sz,'height','0')) : 0;
+    var content = (kind==='pic') ? this.picImg(el,wmm,hmm)
+                : (kind==='box') ? this.boxContent(el,wmm,hmm)
+                : this.shapeContent(el,wmm,hmm);
+    if(floating){
+      var left = u2mm(attr(pos,'horzOffset','0'));
+      var top  = u2mm(attr(pos,'vertOffset','0'));
+      var ha = attr(pos,'horzAlign','LEFT');
+      var lcss = (ha==='CENTER') ? 'left:50%;transform:translateX(-50%)'
+               : (ha==='RIGHT')  ? 'right:'+left.toFixed(2)+'mm'
+               : 'left:'+left.toFixed(2)+'mm';
+      return { inline:'', block:'',
+        float:'<div class="hp-float" style="position:absolute;'+lcss+';top:'+top.toFixed(2)+'mm;'+
+              (wmm?'width:'+wmm.toFixed(2)+'mm;':'')+'z-index:1">'+content+'</div>' };
+    }
+    return { inline:'<span class="hp-obj" style="display:inline-block;vertical-align:middle;'+
+             (wmm?'max-width:'+wmm.toFixed(2)+'mm;':'')+'">'+content+'</span>', float:'', block:'' };
+  };
+
+  Parser.prototype.picImg = function(el, wmm, hmm){
+    var img = tag(el,'hp:img') || tag(el,'hc:img');
+    var ref = img ? (attr(img,'binaryItemIDRef') || attr(img,'href')) : null;
+    var url = this.imgFor(ref);
+    var dim = (wmm?'width:'+wmm.toFixed(2)+'mm;':'')+(hmm?'height:'+hmm.toFixed(2)+'mm;':'');
+    if(!url) return '<span class="hp-img-missing" style="display:inline-block;'+dim+'min-width:20mm;min-height:8mm;border:1px dashed #ccc;color:#aaa;font-size:9pt;text-align:center">［이미지］</span>';
+    return '<img class="hp-img" src="'+url+'" style="'+dim+'max-width:100%" alt="" />';
+  };
+
+  // 글상자 : 안쪽 문단(subList)을 테두리 박스로
+  Parser.prototype.boxContent = function(el, wmm, hmm){
+    var sub = tag(el,'hp:subList');
+    if(!sub){ // 그림만 든 컨테이너면 그림으로
+      if(tag(el,'hp:img')||tag(el,'hc:img')) return this.picImg(el,wmm,hmm);
+    }
+    var inner = '';
+    if(sub){
+      elementChildren(sub).filter(function(e){return localName(e)==='p';}).forEach(function(p){
+        try{ inner += this.renderPara(p); }catch(e){}
+      }, this);
+    }
+    var bf = this.borderFills[attr(el,'borderFillIDRef')];
+    var c = 'box-sizing:border-box;padding:1mm 1.5mm;';
+    if(bf){
+      c += 'border-top:'+(bf.t||'none')+';border-right:'+(bf.r||'none')+
+           ';border-bottom:'+(bf.b||'none')+';border-left:'+(bf.l||'none')+';';
+      if(bf.bg) c += 'background:'+bf.bg+';';
+    } else { c += 'border:0.12mm solid #888;'; }
+    if(hmm) c += 'min-height:'+hmm.toFixed(2)+'mm;';
+    return '<div class="hp-textbox" style="'+c+'">'+(inner||'&#8203;')+'</div>';
+  };
+
+  // 단순 도형 (사각형/타원/선)
+  Parser.prototype.shapeContent = function(el, wmm, hmm){
+    var ln = localName(el);
+    var bf = this.borderFills[attr(el,'borderFillIDRef')];
+    var border = (bf && (bf.t||bf.l||bf.r||bf.b)) ? (bf.t||bf.l||bf.r||bf.b) : '0.2mm solid #555';
+    var bg = (bf && bf.bg) ? bf.bg : 'transparent';
+    var w = wmm?wmm.toFixed(2)+'mm':'10mm', h = hmm?hmm.toFixed(2)+'mm':'10mm';
+    if(ln==='line' || ln==='connectLine') return '<div style="width:'+w+';height:0;border-top:'+border+'"></div>';
+    var radius = (ln==='ellipse') ? 'border-radius:50%;' : '';
+    return '<div style="width:'+w+';height:'+h+';border:'+border+';background:'+bg+';'+radius+'box-sizing:border-box"></div>';
   };
 
   // hp:t 내부의 텍스트 + 인라인 요소(tab/lineBreak/nbSpace…)
@@ -340,7 +420,9 @@
     var script = sc ? (sc.textContent||'') : '';
     var disp = (attr(eq,'lineMode','CHAR')==='LINE');
     var html = (root.HWPEqn ? root.HWPEqn.render(script, disp) : esc(script));
-    return '<span class="hp-eq">'+html+'</span>';
+    var latex = '';
+    try { latex = (root.HWPEqn && root.HWPEqn.toLatex) ? root.HWPEqn.toLatex(script) : ''; } catch(e){}
+    return '<span class="hp-eq" data-latex="'+esc(latex)+'" title="클릭하면 LaTeX 복사">'+html+'</span>';
   };
 
   Parser.prototype.renderPic = function(pic){
