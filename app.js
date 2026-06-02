@@ -239,10 +239,21 @@
     els.zoomVal.textContent = Math.round(state.zoom * 100) + '%';
   }
 
-  // ---- .hwp (구형 바이너리) : 한글 내장 미리보기(첫 페이지) + 텍스트 -----
-  // 구형 .hwp 본문은 OLE 안에 압축 저장돼 브라우저에서 정밀 재현이 어렵습니다.
-  // 대신 한글이 저장해 둔 PrvImage(첫 페이지 렌더)·PrvText 를 꺼내 보여줍니다.
+  // ---- .hwp (구형 바이너리) -----------------------------------------
+  //  1) 본문을 직접 파싱해 전체 내용(문단·서식·표·그림)을 렌더
+  //  2) 실패하면 한글 내장 첫 페이지 미리보기(PrvImage)로 폴백
   async function renderHwp(f) {
+    try {
+      var r = await window.HWPBIN.parse(f.buf.slice(0));
+      if (r && r.html && r.html.replace(/<[^>]+>/g, '').replace(/[\s​]/g, '').length > 0) {
+        return { html: r.html, meta: r.meta, limited: false };
+      }
+    } catch (e) { console.warn('HWPBIN 파싱 실패, 미리보기 폴백:', e && e.message); }
+    return await renderHwpPreview(f);
+  }
+
+  // 폴백: 한글 내장 PrvImage(첫 페이지)·PrvText 추출
+  async function renderHwpPreview(f) {
     var CFB;
     try { CFB = await import('https://esm.sh/cfb@1.2.2'); }
     catch (e) { throw new Error('오프라인에서는 .hwp(구형) 변환에 최초 1회 온라인 접속이 필요해요. (.hwpx 는 오프라인 가능)'); }

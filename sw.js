@@ -3,7 +3,7 @@
 
 'use strict';
 
-const VERSION = 'v3';
+const VERSION = 'v4';
 const CACHE = 'hwp2pdf-' + VERSION;          // precached app shell
 const RUNTIME = 'hwp2pdf-runtime-' + VERSION; // runtime cache for CDN/font assets
 
@@ -17,6 +17,7 @@ const APP_SHELL = [
   './app.js',
   './hwpx.js',
   './hwpeqn.js',
+  './hwpbin.js',
   './docx.js',
   './exporters.js',
   './manifest.webmanifest',

@@ -118,7 +118,7 @@ main{max-width:1100px;margin:0 auto;padding:22px 18px 80px}
 .sheet p{margin:0}
 .sheet .hp-para{white-space:pre-wrap;word-break:break-word}
 .sheet table.hp-tbl{border-collapse:collapse;table-layout:fixed;margin:2px 0}
-.sheet table.hp-tbl td{vertical-align:top;padding:1mm 1.4mm;overflow-wrap:break-word}
+.sheet table.hp-tbl td{vertical-align:top;padding:1mm 1.4mm;overflow-wrap:break-word;border:0.1mm solid #c8c8c8}
 .sheet .hp-eq{display:inline-block;vertical-align:middle}
 .sheet .hp-eq-raw{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.85em;color:#1a3;
   background:#f3faf6;border:1px dashed #bfe3cf;border-radius:4px;padding:0 4px}

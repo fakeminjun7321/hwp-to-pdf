@@ -21,6 +21,8 @@
 <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous"></script>
 <!-- DOCX 렌더링 -->
 <script defer src="https://cdn.jsdelivr.net/npm/docx-preview@0.3.5/dist/docx-preview.min.js" integrity="sha384-XETEC39BEI+1nILZ5N2gFQcu6ii4k3avoqyi4YwQMbs29xkt01EKMqd9rFvic0Wu" crossorigin="anonymous"></script>
+<!-- 구형 .hwp 압축 해제(raw inflate) -->
+<script defer src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako_inflate.min.js" integrity="sha384-taEjHL+GUvC8IhXeCaTNUxz3O8ItsajGFLDFj4v/VJvM24HU36qP/6sRpuAGGfeT" crossorigin="anonymous"></script>
 
 <link rel="stylesheet" href="styles.css" />
 
@@ -33,6 +35,7 @@
 <!-- App modules -->
 <script defer src="hwpeqn.js"></script>
 <script defer src="hwpx.js"></script>
+<script defer src="hwpbin.js"></script>
 <script defer src="docx.js"></script>
 <script defer src="exporters.js"></script>
 <script defer src="app.js"></script>
@@ -114,7 +117,7 @@
       <summary>변환 품질 & 알아두면 좋은 점</summary>
       <ul>
         <li><b>.hwpx</b>(한글 2014 이후 기본 저장형식) 는 자체 렌더러로 표·서식·수식까지 충실히 변환합니다.</li>
-        <li><b>.hwp</b>(구형 바이너리) 는 <code>hwp.js</code> 로 렌더링하며, 복잡한 문서는 일부 어긋날 수 있습니다. 가능하면 한글에서 <b>다른 이름으로 저장 → .hwpx</b> 후 변환하면 가장 깔끔합니다.</li>
+        <li><b>.hwp</b>(구형 바이너리)도 자체 파서로 <b>본문 전체(문단·표·그림)</b>를 변환합니다. 큰 사진은 자동 축소돼 100MB+ 파일도 처리돼요. 복잡한 도형·정밀 레이아웃은 일부 다를 수 있어, 픽셀 단위가 필요하면 CLI(LibreOffice)를 쓰세요.</li>
         <li>수식은 한글 수식 스크립트를 LaTeX(KaTeX)로 변환해 그립니다. 드물게 특수 기호는 원본 스크립트로 표시될 수 있어요.</li>
         <li><b>PDF로 저장</b>(인쇄)은 텍스트가 살아있는 벡터 PDF라 가장 정확합니다. <b>이미지 PDF</b>는 한 번에 다운로드되지만 글자가 이미지로 들어갑니다.</li>
         <li>픽셀 단위까지 100% 똑같이 뽑아야 한다면, 저장소의 <code>cli/hwp2pdf.py</code> (LibreOffice + H2Orestart) 를 쓰세요.</li>
@@ -184,6 +187,7 @@
           <tr><td><a href="https://github.com/parallax/jsPDF" target="_blank" rel="noopener">jsPDF</a></td><td>이미지 PDF</td><td>MIT</td></tr>
           <tr><td><a href="https://github.com/niklasvh/html2canvas" target="_blank" rel="noopener">html2canvas</a></td><td>화면 캡처</td><td>MIT</td></tr>
           <tr><td><a href="https://github.com/SheetJS/js-cfb" target="_blank" rel="noopener">SheetJS cfb</a></td><td>.hwp(OLE) 읽기</td><td>Apache-2.0</td></tr>
+          <tr><td><a href="https://github.com/nodeca/pako" target="_blank" rel="noopener">pako</a></td><td>.hwp 압축 해제</td><td>MIT</td></tr>
           <tr><td><a href="https://github.com/VolodymyrBaydalka/docxjs" target="_blank" rel="noopener">docx-preview</a></td><td>.docx 렌더링</td><td>Apache-2.0</td></tr>
           <tr><td><a href="https://fonts.google.com/noto" target="_blank" rel="noopener">Noto Sans/Serif KR</a></td><td>한글 글꼴</td><td>SIL OFL 1.1</td></tr>
         </tbody>
