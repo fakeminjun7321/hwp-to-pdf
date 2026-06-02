@@ -50,7 +50,16 @@
           sup:!!(prop&0x8000), sub:!!(prop&0x10000), color:colorref(color) });
       } else if(r.tag===T.PARA_SHAPE && r.len>=4){
         var p1=dv.getUint32(0,true), a=(p1>>>2)&0x7;
-        paraShapes.push({ align:['justify','left','right','center','justify','justify','left'][a]||'left' });
+        var ls = r.len>=28 ? dv.getInt32(24,true) : 160;       // 줄 간격(보통 %)
+        paraShapes.push({
+          align:['justify','left','right','center','justify','justify','left'][a]||'left',
+          leftMargin: r.len>=8 ? dv.getInt32(4,true) : 0,       // HWPUNIT
+          rightMargin: r.len>=12 ? dv.getInt32(8,true) : 0,
+          indent: r.len>=16 ? dv.getInt32(12,true) : 0,
+          prevSpacing: r.len>=20 ? dv.getInt32(16,true) : 0,
+          nextSpacing: r.len>=24 ? dv.getInt32(20,true) : 0,
+          lineHeight: (ls>=50 && ls<=500) ? (ls/100) : 1.6
+        });
       } else if(r.tag===T.BIN_DATA){
         var bp=dv.getUint16(0,true), type=bp&0xf, off=2, id=0, fmt='';
         if((type===1||type===2) && r.len>=4){ id=dv.getUint16(off,true); off+=2; if(off+2<=r.len){ var fl=dv.getUint16(off,true); off+=2; for(var k=0;k<fl && off+k*2+2<=r.len;k++) fmt+=String.fromCharCode(dv.getUint16(off+k*2,true)); } }
@@ -156,7 +165,15 @@
     if(span) inner+=span+'</span>';
     objs.forEach(function(o){ var r=self.renderCtrl(o); inner+=r.inline; blocks+=r.block; });
 
-    return '<p class="hp-para" style="text-align:'+(ps.align||'left')+'">'+(inner||'&#8203;')+'</p>'+blocks;
+    var mm=function(u){ return (u||0)*25.4/7200; };
+    var css='text-align:'+(ps.align||'left');
+    if(ps.lineHeight) css+=';line-height:'+ps.lineHeight;
+    if(ps.leftMargin>0) css+=';padding-left:'+mm(ps.leftMargin).toFixed(2)+'mm';
+    if(ps.rightMargin>0) css+=';padding-right:'+mm(ps.rightMargin).toFixed(2)+'mm';
+    if(ps.indent) css+=';text-indent:'+mm(ps.indent).toFixed(2)+'mm';
+    if(ps.prevSpacing>0) css+=';margin-top:'+mm(ps.prevSpacing).toFixed(2)+'mm';
+    if(ps.nextSpacing>0) css+=';margin-bottom:'+mm(ps.nextSpacing).toFixed(2)+'mm';
+    return '<p class="hp-para" style="'+css+'">'+(inner||'&#8203;')+'</p>'+blocks;
   };
 
   Renderer.prototype.renderCtrl=function(ctrl){
@@ -203,6 +220,16 @@
     return '<span class="hp-eq">'+(root.HWPEqn?root.HWPEqn.render(script,false):esc(script))+'</span>';
   };
 
+  // PAGE_DEF(73): 용지 크기·여백 → meta
+  function applyPageDef(meta, r){
+    if(r.len<24) return;
+    var dv=rdv(r), mm=function(u){ return u*25.4/7200; };
+    var w=mm(dv.getUint32(0,true)>>>0), h=mm(dv.getUint32(4,true)>>>0);
+    if(w>=50 && w<=2000 && h>=50 && h<=2000){ meta.page={ wMm:w, hMm:h, landscape:w>h }; }
+    var l=mm(dv.getUint32(8,true)>>>0), rt=mm(dv.getUint32(12,true)>>>0), t=mm(dv.getUint32(16,true)>>>0), b=mm(dv.getUint32(20,true)>>>0);
+    if(l>=0&&l<200&&rt>=0&&rt<200&&t>=0&&t<200&&b>=0&&b<200){ meta.margin={ t:t, r:rt, b:b, l:l }; }
+  }
+
   // ---- 메인(순수) ----------------------------------------------------
   function parseHwp(ctx){
     var fh=ctx.find('FileHeader'); if(!fh) throw new Error('FileHeader 없음 — HWP 가 아님');
@@ -218,16 +245,19 @@
     var doc=parseDocInfo(diBytes);
     var rend=new Renderer(doc, ctx);
 
+    var meta={ page:{wMm:210,hMm:297,landscape:false}, margin:{t:20,r:20,b:20,l:20} };
     var bodyHtml='', s=0, paraTotal=0;
     while(s<300){
       var sb=stream('BodyText/Section'+s); if(!sb) break;
+      var recs=records(sb);
+      if(s===0){ for(var pi=0;pi<recs.length;pi++){ if(recs[pi].tag===73){ applyPageDef(meta, recs[pi]); break; } } }
       if(s>0) bodyHtml+='<div class="hp-pagebreak" style="break-before:page"></div>';
-      var paras=parseBody(records(sb)); paraTotal+=paras.length;
+      var paras=parseBody(recs); paraTotal+=paras.length;
       for(var p=0;p<paras.length;p++){ try{ bodyHtml+=rend.renderPara(paras[p]); }catch(e){} }
       s++;
     }
     if(s===0) throw new Error('BodyText 섹션이 없습니다');
-    return { html:bodyHtml, meta:{ page:{wMm:210,hMm:297,landscape:false}, margin:{t:20,r:20,b:20,l:20} },
+    return { html:bodyHtml, meta:meta,
              stats:{ sections:s, paras:paraTotal, fonts:doc.fonts.length, charShapes:doc.charShapes.length } };
   }
 

@@ -3,7 +3,7 @@
 
 'use strict';
 
-const VERSION = 'v4';
+const VERSION = 'v5';
 const CACHE = 'hwp2pdf-' + VERSION;          // precached app shell
 const RUNTIME = 'hwp2pdf-runtime-' + VERSION; // runtime cache for CDN/font assets
 

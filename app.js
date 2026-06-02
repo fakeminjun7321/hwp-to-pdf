@@ -340,7 +340,9 @@
       var s = scale || 2;
       var hPx = el.offsetHeight || (f.rendered.meta.page.hMm * PX_PER_MM);
       var wPx = el.offsetWidth || (f.rendered.meta.page.wMm * PX_PER_MM);
-      var MAXSIDE = 16000;
+      // 캔버스 한계: Safari 는 16384, Chrome/Edge 는 더 큼 → 긴 문서도 더 선명하게
+      var isSafari = /^((?!chrome|android|crios|edg).)*safari/i.test(navigator.userAgent || '');
+      var MAXSIDE = isSafari ? 16000 : 24000;
       if (hPx * s > MAXSIDE) s = MAXSIDE / hPx;
       if (wPx * s > MAXSIDE) s = Math.min(s, MAXSIDE / wPx);
       var canvas = await Exporters.sheetToCanvas(el, s);
