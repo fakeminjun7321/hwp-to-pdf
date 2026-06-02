@@ -1,0 +1,157 @@
+/* ===== 한글 → PDF 변환기 ===== */
+:root{
+  --bg:#f4f5f7; --panel:#ffffff; --ink:#1c2430; --muted:#6b7686;
+  --line:#e3e7ee; --primary:#2f6fed; --primary-d:#2257c9;
+  --secondary:#10b187; --danger:#e0564f; --ok:#1f9d6b;
+  --radius:14px; --shadow:0 1px 3px rgba(20,30,50,.08),0 8px 24px rgba(20,30,50,.06);
+  --sans:"Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic","맑은 고딕",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:var(--sans);color:var(--ink);background:var(--bg);line-height:1.5;-webkit-font-smoothing:antialiased}
+
+/* topbar */
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;
+  padding:14px 22px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:30}
+.brand{display:flex;align-items:center;gap:14px}
+.logo{display:grid;place-items:center;width:46px;height:46px;border-radius:12px;
+  background:linear-gradient(135deg,var(--primary),#5b8bff);color:#fff;font-weight:800;font-size:13px;letter-spacing:-.5px}
+.brand-text h1{margin:0;font-size:18px;font-weight:800;letter-spacing:-.4px}
+.tagline{margin:2px 0 0;font-size:12.5px;color:var(--muted)}
+.tagline .lock{color:var(--ok);font-weight:600}
+.gh-link{font-size:13px;color:var(--muted);text-decoration:none;border:1px solid var(--line);padding:7px 12px;border-radius:9px}
+.gh-link:hover{color:var(--ink);border-color:#cdd4df}
+
+main{max-width:1100px;margin:0 auto;padding:22px 18px 80px}
+
+/* buttons */
+.btn{font-family:inherit;font-size:14px;font-weight:600;border:1px solid transparent;border-radius:10px;
+  padding:10px 16px;cursor:pointer;transition:.15s;display:inline-flex;align-items:center;gap:6px}
+.btn:active{transform:translateY(1px)}
+.btn-sm{padding:6px 11px;font-size:13px;border-radius:8px}
+.btn-primary{background:var(--primary);color:#fff}
+.btn-primary:hover{background:var(--primary-d)}
+.btn-secondary{background:var(--secondary);color:#fff}
+.btn-secondary:hover{filter:brightness(.95)}
+.btn-ghost{background:#fff;border-color:var(--line);color:var(--ink)}
+.btn-ghost:hover{border-color:#cdd4df;background:#fafbfc}
+
+/* dropzone */
+.dropzone{background:var(--panel);border:2.5px dashed #c4ccd8;border-radius:var(--radius);
+  padding:42px 20px;text-align:center;transition:.18s;cursor:pointer;box-shadow:var(--shadow)}
+.dropzone:hover{border-color:var(--primary);background:#f8faff}
+.dropzone.drag{border-color:var(--primary);background:#eef4ff;transform:scale(1.005)}
+.dropzone:focus-visible{outline:3px solid #bcd3ff;outline-offset:3px}
+.dz-icon{font-size:34px;margin-bottom:6px}
+.dz-title{margin:6px 0 2px;font-size:17px}
+.dz-sub{margin:0 0 14px;color:var(--muted);font-size:13px}
+
+/* queue */
+.queue-wrap{margin-top:20px}
+.queue-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.queue-head h2{font-size:14px;margin:0;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.4px}
+.queue{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.qitem{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--line);
+  border-radius:11px;padding:11px 14px;box-shadow:var(--shadow);cursor:pointer;transition:.12s}
+.qitem:hover{border-color:#cdd4df}
+.qitem.active{border-color:var(--primary);box-shadow:0 0 0 3px #e7f0ff}
+.qitem .ficon{width:34px;height:34px;border-radius:8px;display:grid;place-items:center;font-size:12px;font-weight:800;color:#fff;flex:none}
+.qitem .ficon.hwpx{background:#2f6fed}
+.qitem .ficon.hwp{background:#8a5cf6}
+.qitem .fmeta{flex:1;min-width:0;display:flex;flex-direction:column}
+.qitem .fname{display:block;font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qitem .fstat{display:block;font-size:12px;color:var(--muted);margin-top:1px}
+.qitem .fstat.ok{color:var(--ok)} .qitem .fstat.err{color:var(--danger)} .qitem .fstat.warn{color:#c98a14}
+.qitem .fspin{width:16px;height:16px;border-radius:50%;border:2.5px solid #d7deea;border-top-color:var(--primary);animation:spin .7s linear infinite;flex:none}
+.qitem .fx{flex:none;border:none;background:none;color:#aab2c0;font-size:18px;cursor:pointer;padding:2px 6px;border-radius:6px}
+.qitem .fx:hover{background:#f1f3f7;color:var(--danger)}
+
+/* viewer */
+.viewer{margin-top:20px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
+.toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  padding:11px 14px;border-bottom:1px solid var(--line);background:#fbfcfe;position:sticky;top:0;z-index:5}
+.tb-left{display:flex;align-items:baseline;gap:10px;min-width:0}
+.doc-name{font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:46vw}
+.doc-meta{font-size:12px;color:var(--muted);white-space:nowrap}
+.tb-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.zoom{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:9px;padding:2px 4px;background:#fff}
+.zoom span{font-size:12.5px;min-width:42px;text-align:center;color:var(--muted)}
+.zoom .btn{padding:3px 9px;font-size:15px;line-height:1}
+
+/* paper / sheet */
+.paper-scroll{max-height:78vh;overflow:auto;background:#5b6473;padding:26px 0;display:flex;justify-content:center;align-items:flex-start}
+.sheet{background:#fff;box-shadow:0 4px 24px rgba(0,0,0,.28);transform-origin:top center}
+.sheet .hpage{background:#fff}
+
+/* dropdown for print */
+.menu{position:relative}
+.menu-pop{position:absolute;right:0;top:calc(100% + 6px);background:#fff;border:1px solid var(--line);
+  border-radius:11px;box-shadow:var(--shadow);padding:6px;min-width:230px;z-index:40}
+.menu-pop button{display:block;width:100%;text-align:left;background:none;border:none;padding:9px 11px;
+  border-radius:8px;font-family:inherit;font-size:13.5px;cursor:pointer;color:var(--ink)}
+.menu-pop button:hover{background:#f3f6fc}
+.menu-pop small{display:block;color:var(--muted);font-size:11.5px;font-weight:400;margin-top:1px}
+
+/* notes */
+.notes{margin-top:26px}
+.notes details{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:6px 16px}
+.notes summary{cursor:pointer;font-weight:700;font-size:14px;padding:8px 0;color:var(--ink)}
+.notes ul{margin:6px 0 14px;padding-left:18px;color:#46505f;font-size:13.5px;line-height:1.7}
+.notes code{background:#eef1f6;padding:1px 6px;border-radius:5px;font-size:12.5px}
+
+/* toast + busy */
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:#1c2430;color:#fff;
+  padding:11px 18px;border-radius:10px;font-size:13.5px;z-index:60;box-shadow:0 8px 30px rgba(0,0,0,.25);max-width:90vw}
+.toast.err{background:var(--danger)} .toast.ok{background:var(--ok)}
+.busy{position:fixed;inset:0;background:rgba(244,245,247,.72);backdrop-filter:blur(2px);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:80;font-weight:600;color:#3a4453}
+/* [hidden] 속성이 display 선언을 못 이기는 문제 방지 */
+[hidden]{display:none !important}
+.spinner{width:44px;height:44px;border-radius:50%;border:4px solid #d7deea;border-top-color:var(--primary);animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ===================================================================
+   Rendered HWP document styling (applies inside .sheet)
+   Most properties are set inline by the renderer; these are defaults.
+   =================================================================== */
+.sheet{color:#000;font-family:var(--sans);font-size:10pt}
+.sheet p{margin:0}
+.sheet .hp-para{white-space:pre-wrap;word-break:break-word}
+.sheet table.hp-tbl{border-collapse:collapse;table-layout:fixed;margin:2px 0}
+.sheet table.hp-tbl td{vertical-align:top;padding:1mm 1.4mm;overflow-wrap:break-word}
+.sheet .hp-eq{display:inline-block;vertical-align:middle}
+.sheet .hp-eq-raw{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.85em;color:#1a3;
+  background:#f3faf6;border:1px dashed #bfe3cf;border-radius:4px;padding:0 4px}
+.sheet img.hp-img{max-width:100%}
+.sheet .hp-fn{vertical-align:super;font-size:.7em;color:#2257c9}
+
+/* 구형 .hwp : 첫 페이지 미리보기 이미지 + 안내 */
+.sheet .hwp-fallback{padding:14mm;white-space:pre-wrap;font-size:11pt;line-height:1.7}
+.sheet .hwp-prv-wrap{padding:0}
+.sheet .hwp-prv-wrap .fb-banner{margin:0;border-radius:0}
+.sheet .hp-prv{display:block;width:100%;height:auto}
+.sheet .hwp-fallback .fb-banner{white-space:normal;background:#fff7e6;border:1px solid #ffe0a3;
+  color:#8a5a00;padding:10px 14px;margin-bottom:14px;font-size:12.5px;line-height:1.5}
+
+/* ===================================================================
+   Print — produce a clean vector PDF via the browser's "Save as PDF"
+   =================================================================== */
+@media print{
+  @page{ size:A4; margin:20mm; }            /* overridden per-doc by #printStyle */
+  html,body{background:#fff;margin:0}
+  .topbar,.dropzone,.queue-wrap,.toolbar,.notes,.toast,.busy,.gh-link,#busy{display:none !important}
+  main{max-width:none;margin:0;padding:0}
+  .viewer{border:none;box-shadow:none;border-radius:0;margin:0}
+  .paper-scroll{max-height:none;overflow:visible;background:#fff;padding:0;display:block}
+  .sheet{box-shadow:none !important;width:auto !important;transform:none !important;
+    padding:0 !important;margin:0 !important}
+  /* let the browser paginate; avoid splitting rows/images across pages */
+  .sheet tr,.sheet img,.sheet .hp-eq{break-inside:avoid}
+  .sheet .hpage{break-after:page}
+  .sheet .hpage:last-child{break-after:auto}
+}
+
+@media (max-width:640px){
+  .doc-name{max-width:38vw}
+  main{padding:16px 12px 70px}
+}

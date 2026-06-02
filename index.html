@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>한글 → PDF 변환기 · HWP / HWPX</title>
+<meta name="description" content="HWP·HWPX 한글 문서를 브라우저에서 바로 PDF로. 파일이 서버로 전송되지 않는 100% 클라이언트 변환." />
+
+<!-- Korean web fonts (fallback so output looks the same on any machine) -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Noto+Serif+KR:wght@400;600;700&display=swap" rel="stylesheet" />
+
+<!-- KaTeX for equation rendering -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" integrity="sha384-nB0miv6/jRmo5UMMR1wu3Gz6NLsoTkbqJghGIsx//Rlm+ZU03BU6SQNC66uf4l5+" crossorigin="anonymous" />
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" integrity="sha384-7zkQWkzuo3B5mTepMUcHkMB5jZaolc2xDwL6VFqjFALcbeS9Ggm/Yr2r3Dy4lfFg" crossorigin="anonymous"></script>
+
+<!-- Unzip (.hwpx), PDF + raster -->
+<script defer src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+
+<link rel="stylesheet" href="styles.css" />
+
+<!-- App modules -->
+<script defer src="hwpeqn.js"></script>
+<script defer src="hwpx.js"></script>
+<script defer src="app.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">한→PDF</span>
+    <div class="brand-text">
+      <h1>한글 문서 PDF 변환기</h1>
+      <p class="tagline">HWP · HWPX → PDF &nbsp;|&nbsp; <span class="lock">🔒 파일이 서버로 전송되지 않습니다 (브라우저에서만 처리)</span></p>
+    </div>
+  </div>
+  <a class="gh-link" href="https://github.com/" target="_blank" rel="noopener" title="소스 코드">소스</a>
+</header>
+
+<main>
+  <!-- ===== Drop / file picker ===== -->
+  <section id="dropzone" class="dropzone" tabindex="0" aria-label="파일을 끌어다 놓거나 선택">
+    <input id="fileInput" type="file" accept=".hwp,.hwpx" multiple hidden />
+    <div class="dz-inner">
+      <div class="dz-icon">📄→📕</div>
+      <p class="dz-title">여기로 <b>HWP·HWPX</b> 파일을 끌어다 놓으세요</p>
+      <p class="dz-sub">또는 클릭해서 선택 · 여러 개 한꺼번에 가능</p>
+      <button id="pickBtn" class="btn btn-primary" type="button">파일 선택</button>
+    </div>
+  </section>
+
+  <!-- ===== Queue ===== -->
+  <section id="queueWrap" class="queue-wrap" hidden>
+    <div class="queue-head">
+      <h2>변환 목록</h2>
+      <button id="clearBtn" class="btn btn-ghost btn-sm" type="button">전체 비우기</button>
+    </div>
+    <ul id="queue" class="queue"></ul>
+  </section>
+
+  <!-- ===== Viewer ===== -->
+  <section id="viewer" class="viewer" hidden>
+    <div class="toolbar">
+      <div class="tb-left">
+        <strong id="docName" class="doc-name">문서</strong>
+        <span id="docMeta" class="doc-meta"></span>
+      </div>
+      <div class="tb-right">
+        <div class="zoom">
+          <button id="zoomOut" class="btn btn-ghost btn-sm" type="button" title="축소">−</button>
+          <span id="zoomVal">100%</span>
+          <button id="zoomIn" class="btn btn-ghost btn-sm" type="button" title="확대">+</button>
+        </div>
+        <button id="btnPrint" class="btn btn-primary" type="button" title="브라우저 인쇄로 PDF 저장 (텍스트 선택·검색 가능, 가장 정확)">PDF로 저장</button>
+        <button id="btnImgPdf" class="btn btn-secondary" type="button" title="이미지 기반 PDF 즉시 다운로드">이미지 PDF</button>
+      </div>
+    </div>
+
+    <div id="paper" class="paper-scroll">
+      <div id="sheet" class="sheet"><!-- rendered document --></div>
+    </div>
+  </section>
+
+  <!-- ===== Empty hint / limitations ===== -->
+  <section class="notes">
+    <details>
+      <summary>변환 품질 & 알아두면 좋은 점</summary>
+      <ul>
+        <li><b>.hwpx</b>(한글 2014 이후 기본 저장형식) 는 자체 렌더러로 표·서식·수식까지 충실히 변환합니다.</li>
+        <li><b>.hwp</b>(구형 바이너리) 는 <code>hwp.js</code> 로 렌더링하며, 복잡한 문서는 일부 어긋날 수 있습니다. 가능하면 한글에서 <b>다른 이름으로 저장 → .hwpx</b> 후 변환하면 가장 깔끔합니다.</li>
+        <li>수식은 한글 수식 스크립트를 LaTeX(KaTeX)로 변환해 그립니다. 드물게 특수 기호는 원본 스크립트로 표시될 수 있어요.</li>
+        <li><b>PDF로 저장</b>(인쇄)은 텍스트가 살아있는 벡터 PDF라 가장 정확합니다. <b>이미지 PDF</b>는 한 번에 다운로드되지만 글자가 이미지로 들어갑니다.</li>
+        <li>픽셀 단위까지 100% 똑같이 뽑아야 한다면, 저장소의 <code>cli/hwp2pdf.py</code> (LibreOffice + H2Orestart) 를 쓰세요.</li>
+      </ul>
+    </details>
+  </section>
+</main>
+
+<!-- print-time dynamic styles (page size / margins per document) -->
+<style id="printStyle"></style>
+
+<!-- toast -->
+<div id="toast" class="toast" hidden></div>
+
+<!-- busy overlay -->
+<div id="busy" class="busy" hidden><div class="spinner"></div><span id="busyText">변환 중…</span></div>
+</body>
+</html>
