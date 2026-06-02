@@ -22,7 +22,8 @@
       zoomIn: $('#zoomIn'), zoomOut: $('#zoomOut'), zoomVal: $('#zoomVal'),
       btnPrint: $('#btnPrint'), btnImgPdf: $('#btnImgPdf'),
       printStyle: $('#printStyle'), toast: $('#toast'),
-      busy: $('#busy'), busyText: $('#busyText')
+      busy: $('#busy'), busyText: $('#busyText'),
+      openLegal: $('#openLegal'), closeLegal: $('#closeLegal'), legalModal: $('#legalModal')
     };
 
     els.pickBtn.addEventListener('click', function (e) { e.stopPropagation(); els.fileInput.click(); });
@@ -50,6 +51,12 @@
     els.zoomOut.addEventListener('click', function () { setZoom(state.zoom - 0.1); });
     els.btnPrint.addEventListener('click', doPrint);
     els.btnImgPdf.addEventListener('click', doImagePdf);
+
+    // 법적 고지 모달
+    els.openLegal.addEventListener('click', function () { els.legalModal.hidden = false; });
+    els.closeLegal.addEventListener('click', closeLegal);
+    els.legalModal.addEventListener('click', function (e) { if (e.target.hasAttribute('data-close')) closeLegal(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !els.legalModal.hidden) closeLegal(); });
 
     // 테스트용 훅 (preview_eval 에서 사용)
     window.__hwp = {
@@ -286,4 +293,5 @@
     clearTimeout(toastTimer); toastTimer = setTimeout(function () { els.toast.hidden = true; }, ms || 2400);
   }
   function busy(on, text) { els.busy.hidden = !on; if (text) els.busyText.textContent = text; }
+  function closeLegal() { els.legalModal.hidden = true; }
 })();
