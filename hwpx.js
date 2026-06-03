@@ -345,8 +345,13 @@
     var sz = tag(el,'hp:sz') || tag(el,'hp:curSz') || tag(el,'hp:orgSz');
     var wmm = sz ? u2mm(attr(sz,'width','0')) : 0;
     var hmm = sz ? u2mm(attr(sz,'height','0')) : 0;
-    var content = (kind==='pic') ? this.picImg(el,wmm,hmm)
-                : (kind==='box') ? this.boxContent(el,wmm,hmm)
+    // 도형/컨테이너 안에 글상자(drawText→subList) 텍스트가 있으면 그 텍스트를 렌더.
+    // (예: 제목이 <hp:rect><hp:drawText>…</hp:drawText></hp:rect> 안에 들어있는 경우)
+    var subEl = tag(el,'hp:subList');
+    var hasText = subEl && elementChildren(subEl).some(function(e){ return localName(e)==='p'; });
+    var hasImg = !!(tag(el,'hp:img') || tag(el,'hc:img'));
+    var content = hasText ? this.boxContent(el,wmm,hmm)
+                : (hasImg || kind==='pic') ? this.picImg(el,wmm,hmm)
                 : this.shapeContent(el,wmm,hmm);
     if(floating){
       var left = u2mm(attr(pos,'horzOffset','0'));

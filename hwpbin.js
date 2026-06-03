@@ -70,7 +70,9 @@
   }
 
   // ---- PARA_TEXT 디코드 ----------------------------------------------
-  var EXT_CTRL={1:1,2:1,3:1,11:1,12:1,14:1,15:1,16:1,17:1,18:1,21:1,22:1,23:1};
+  // 인라인 컨트롤(8 wchar 차지): 4~9,19,20(inline) + 1,2,3,11,12,14~18,21~23(extended)
+  // ※ 탭(9)도 8 wchar 다 — 단순 1글자로 보면 뒤 6 wchar(탭 데이터)가 글자로 새어나옴.
+  var EXT8={1:1,2:1,3:1,4:1,5:1,6:1,7:1,8:1,9:1,11:1,12:1,14:1,15:1,16:1,17:1,18:1,19:1,20:1,21:1,22:1,23:1};
   function decodeParaText(bytes){
     var dv=new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     var segs=[], cur='', i=0, n=bytes.length;
@@ -78,9 +80,14 @@
     while(i+2<=n){
       var w=dv.getUint16(i,true);
       if(w>=32){ cur+=String.fromCharCode(w); i+=2; continue; }
-      if(EXT_CTRL[w]){ flush(); segs.push({t:'inline'}); i+=16; continue; }
-      if(w===9){ flush(); segs.push({t:'tab'}); }
-      else if(w===10){ flush(); segs.push({t:'lbreak'}); }
+      if(EXT8[w]){
+        flush();
+        if(w===11) segs.push({t:'inline'});      // 표·그림·수식 등 인라인 객체 자리
+        else if(w===9) segs.push({t:'tab'});     // 탭
+        // 그 외(필드/북마크/섹션·머리말·자동번호 등)는 표시 없이 건너뜀
+        i+=16; continue;                          // 8 wchar
+      }
+      if(w===10){ flush(); segs.push({t:'lbreak'}); }   // 줄바꿈(1 wchar)
       i+=2;
     }
     flush(); return segs;
@@ -112,10 +119,12 @@
     var ctrl={header:ch, table:null, lists:[], pic:null, eq:null};
     while(cur.i<recs.length && recs[cur.i].level>L){
       var r=recs[cur.i];
-      if(r.level===L+1 && r.tag===T.TABLE){ ctrl.table=r; cur.i++; }
-      else if(r.level===L+1 && r.tag===T.LIST_HEADER){
-        var list={paras:[]}; cur.i++;
-        while(cur.i<recs.length && recs[cur.i].level===L+1 && recs[cur.i].tag===T.PARA_HEADER) list.paras.push(parsePara(recs,cur));
+      if(r.tag===T.TABLE){ ctrl.table=r; cur.i++; }
+      else if(r.tag===T.LIST_HEADER){
+        // 리스트(표 셀 또는 글상자 본문). 글상자는 SHAPE_COMPONENT 아래라 레벨이 더 깊을 수 있음
+        // → 레벨 고정(L+1) 대신 LIST_HEADER 자기 레벨에서 뒤따르는 문단을 모은다.
+        var Llist=r.level, list={paras:[]}; cur.i++;
+        while(cur.i<recs.length && recs[cur.i].level===Llist && recs[cur.i].tag===T.PARA_HEADER) list.paras.push(parsePara(recs,cur));
         ctrl.lists.push(list);
       } else { if(r.tag===T.SHAPE_PICTURE) ctrl.pic=r; if(r.tag===T.EQEDIT) ctrl.eq=r; cur.i++; }
     }
@@ -180,8 +189,9 @@
     var id=this.ctrlId(ctrl);
     if(id==='tbl '||ctrl.table) return { inline:'', block:this.renderTable(ctrl) };
     if(ctrl.eq) return { inline:this.renderEq(ctrl), block:'' };
-    if(ctrl.pic || id==='gso ') return { inline:this.renderGso(ctrl), block:(ctrl.lists.length?this.renderBoxText(ctrl):'') };
-    if(ctrl.lists.length) return { inline:'', block:this.renderBoxText(ctrl) };
+    if(ctrl.pic) return { inline:this.renderGso(ctrl), block:(ctrl.lists.length?this.renderBoxText(ctrl):'') };
+    if(ctrl.lists.length) return { inline:'', block:this.renderBoxText(ctrl) };   // 글상자(텍스트)
+    if(id==='gso ') return { inline:this.renderGso(ctrl), block:'' };             // 그림만(픽처 폴백)
     return { inline:'', block:'' };
   };
 
